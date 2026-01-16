@@ -5,7 +5,7 @@
 static const char CMD_EXIT[] = "exit";
 static const char CMD_ECHO[] = "echo";
 static const char CMD_TYPE[] = "type";
-static const char* const CMDS[] = {CMD_EXIT, CMD_ECHO};
+static const char* const CMDS[] = {CMD_EXIT, CMD_ECHO, CMD_TYPE};
 
 int echo(const char* command) { return 0; }
 
