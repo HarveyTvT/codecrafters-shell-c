@@ -7,6 +7,9 @@ int main(int argc, char* argv[]) {
 
   // TODO: Uncomment the code below to pass the first stage
   printf("$ ");
+  if (argc > 1) {
+    printf("%s: command not found\n", argv[1]);
+  }
 
   return 0;
 }
