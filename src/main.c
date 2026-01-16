@@ -1,14 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 int main(int argc, char* argv[]) {
   // Flush after every printf
   setbuf(stdout, NULL);
+  char command[256];
 
-  // TODO: Uncomment the code below to pass the first stage
   printf("$ ");
-  if (argc > 1) {
-    printf("%s: command not found\n", argv[1]);
+  if (fgets(command, sizeof(command), stdin) != NULL) {
+    // remove new line
+    command[strcspn(command, "\n")] = '\0';
+    if (strlen(command) > 0) {
+      printf("%s: command not found\n", command);
+    }
   }
 
   return 0;
