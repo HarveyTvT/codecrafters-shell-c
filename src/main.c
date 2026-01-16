@@ -7,12 +7,14 @@ int main(int argc, char* argv[]) {
   setbuf(stdout, NULL);
   char command[256];
 
-  printf("$ ");
-  if (fgets(command, sizeof(command), stdin) != NULL) {
-    // remove new line
-    command[strcspn(command, "\n")] = '\0';
-    if (strlen(command) > 0) {
-      printf("%s: command not found\n", command);
+  while (true) {
+    printf("$ ");
+    if (fgets(command, sizeof(command), stdin) != NULL) {
+      // remove new line
+      command[strcspn(command, "\n")] = '\0';
+      if (strlen(command) > 0) {
+        printf("%s: command not found\n", command);
+      }
     }
   }
 
