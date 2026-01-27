@@ -116,9 +116,12 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (strlen(command) > 0) {
-                    printf("%s: command not found\n", &command[i]);
+                    printf("%s: not found\n", &command[i]);
+                    continue;
                 }
             }
+
+            printf("%s: command not found\n", command);
         }
     }
 
