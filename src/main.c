@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <sys/stat.h>
 
 static const char CMD_EXIT[] = "exit";
 static const char CMD_ECHO[] = "echo";
@@ -17,14 +17,20 @@ int search_dir(char* path, char* command, char* result) {
   }
 
   struct dirent* entry;
-  char fullpath[1024];
+  struct stat st;
   int found;
 
   while ((entry = readdir(dir)) != NULL) {
     if (strcmp(entry->d_name, command) == 0) {
       snprintf(result, 1024, "%s/%s", path, entry->d_name);
-      if (access(result, X_OK) == 0) {
-        return 1;
+
+      if (stat(result, &st) == -1) {
+        continue;
+      }
+
+      if (st.st_mode & S_IXUSR) {
+        found = 1;
+        break;
       }
     }
   }
@@ -98,13 +104,13 @@ int main(int argc, char* argv[]) {
         // check is is in PATH
         char cmd_path[1024];
         if (get_cmd_path(&command[i], cmd_path) == 1) {
-          printf("%s is %s\n", command, cmd_path);
+          printf("%s is %s\n", &command[i], cmd_path);
           continue;
         }
-      }
 
-      if (strlen(command) > 0) {
-        printf("%s: command not found\n", command);
+        if (strlen(command) > 0) {
+          printf("%s: command not found\n", &command[i]);
+        }
       }
     }
   }
