@@ -63,6 +63,59 @@ int search_path(char* command, char* result) {
   return found;
 }
 
+// count_token, respect " and '
+int count_token(char* line) {
+  if (line == NULL) {
+    return 0;
+  }
+
+  int cnt = 0;
+  int prev_single_quot = 0;
+  int prev_double_quot = 0;  // is string
+  int prev_tk = 0;           // preceding token
+
+  int i = 0;  // index
+  while (i < strlen(line)) {
+    char ch = line[i++];
+    if (ch == ' ') {
+      if (prev_tk == 0) {
+        continue;
+      }
+
+      if (prev_double_quot == 1 || prev_single_quot == 1) {
+        continue;
+      }
+
+      prev_tk = 0;
+      cnt++;
+    } else if (ch == '"') {
+      prev_double_quot ^= 1;
+    } else if (ch == '\'') {
+      prev_single_quot ^= 1;
+    } else {
+      if (prev_tk == 0) {
+        prev_tk = 1;
+      }
+    }
+  }
+
+  if (prev_tk == 1) {
+    cnt++;
+  }
+
+  if (prev_double_quot == 1) {
+    printf("unfinished \"");
+    return -1;
+  }
+
+  if (prev_single_quot == 1) {
+    printf("unfinished \'");
+    return -1;
+  }
+
+  return cnt;
+}
+
 int main(int argc, char* argv[]) {
   // Flush after every printf
   setbuf(stdout, NULL);
