@@ -165,14 +165,19 @@ int builtin_pwd(const char *command) {
 
 int builtin_cd(const char *command) {
     int cmd_l = strcspn(command, " ");
+    const char *path = &command[cmd_l + 1];
+
+    if (strcmp(path, "~") == 0) {
+        path = getenv("HOME");
+    }
 
     struct stat s;
-    if (stat(&command[cmd_l + 1], &s) == -1) {
+    if (stat(path, &s) == -1) {
         printf("cd: %s: No such file or directory\n", &command[cmd_l + 1]);
         return 0;
     }
 
-    return chdir(&command[cmd_l + 1]);
+    return chdir(path);
 };
 
 // exit if return -1
