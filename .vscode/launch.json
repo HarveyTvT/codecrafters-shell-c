@@ -6,7 +6,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/shell",
-      "args": ["<", "src/input"],
+      "args": ["<", "input"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],

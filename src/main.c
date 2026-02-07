@@ -1,17 +1,21 @@
 #include <alloca.h>
 #include <dirent.h>
+#include <linux/limits.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
-static const char CMD_EXIT[] = "exit";
-static const char CMD_ECHO[] = "echo";
-static const char CMD_TYPE[] = "type";
-static const char *const CMDS[] = {CMD_EXIT, CMD_ECHO, CMD_TYPE};
+static const char *builtin[] = {
+    "exit",
+    "echo",
+    "type",
+    "pwd",
+};
 
-int search_dir(const char *path, const char *command, char *result) {
+int search_dir(const char *path, const char *command, char *full_path) {
     DIR *dir = opendir(path);
     if (!dir) {
         return 0;
@@ -19,13 +23,13 @@ int search_dir(const char *path, const char *command, char *result) {
 
     struct dirent *entry;
     struct stat st;
-    int found;
+    int found = 0;
 
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, command) == 0) {
-            snprintf(result, 1024, "%s/%s", path, entry->d_name);
+            snprintf(full_path, PATH_MAX, "%s/%s", path, entry->d_name);
 
-            if (stat(result, &st) == -1) {
+            if (stat(full_path, &st) == -1) {
                 continue;
             }
 
@@ -40,19 +44,18 @@ int search_dir(const char *path, const char *command, char *result) {
     return found;
 }
 
-int search_path(const char *command, char *result) {
+int search_path(const char *command, char *full_path) {
     char *path = getenv("PATH");
     char *delim = ":";
 
-    char *path_cpy = malloc(strlen(path) + 1);
-    strcpy(path_cpy, path);
+    char *path_cpy = strdup(path);
 
-    int found;
+    int found = 0;
 
     char *save;
     for (char *dir = strtok_r(path_cpy, delim, &save); dir;
          dir = strtok_r(NULL, delim, &save)) {
-        if (search_dir(dir, command, result) == 1) {
+        if (search_dir(dir, command, full_path) == 1) {
             found = 1;
             break;
         }
@@ -84,14 +87,9 @@ int count_token(const char *src) {
     return result;
 }
 
-// exec_command
-void exec_command(const char *src) {
-    if (src == NULL) {
-        return;
-    }
-    // 1. parse
-    int size = count_token(src);
-    char *results[size];
+char **parse_command(const char *src, size_t *size) {
+    *size = count_token(src);
+    char **results = malloc(sizeof(char *) * (*size));
     size_t idx = 0;
 
     char *src_cpy = strdup(src);
@@ -103,26 +101,96 @@ void exec_command(const char *src) {
         token = strtok_r(NULL, delim, &save);
     }
 
-    // 2. exec command
-    char *full_cmd_path = malloc(1024);
-    if (search_path(results[0], full_cmd_path) != 1) {
-        printf("%s: command not found\n", results[0]);
-        return;
-    }
-    // printf("exec %s\n", full_cmd_path);
+    return results;
+}
 
-    FILE *fp = popen(src, "r");
+// exec_command
+int exec_command(const char *command) {
+    int cmd_l = strcspn(command, " ");
+    char cmd_name[cmd_l + 1];
+    memset(cmd_name, 0, cmd_l + 1);
+    strncpy(cmd_name, command, cmd_l);
+
+    char full_path[PATH_MAX];
+    int found = 0;
+    memset(full_path, 0, PATH_MAX);
+    if (search_path(cmd_name, full_path) == 0) {
+        printf("%s: command not found\n", cmd_name);
+        return 0;
+    }
+
+    FILE *fp = popen(command, "r");
     char buffer[128];
+    memset(buffer, 0, 128);
     while (fgets(buffer, sizeof(buffer), fp) != NULL) {
         printf("%s", buffer);
     }
     pclose(fp);
 
-    // last: exit
-    free(full_cmd_path);
-    free(src_cpy);
+    return 0;
+}
 
-    return;
+int builtin_echo(const char *command) {
+    int cmd_l = strcspn(command, " ");
+    if (cmd_l + 1 < strlen(command)) {
+        printf("%s\n", &command[cmd_l + 1]);
+    } else {
+        printf("\n");
+    }
+    return 0;
+};
+
+int builtin_type(const char *command) {
+    int cmd_l = strcspn(command, " ");
+
+    for (size_t i = 0; i < sizeof(builtin) / sizeof(char *); i++) {
+        if (strcmp(&command[cmd_l + 1], builtin[i]) == 0) {
+            printf("%s is a shell builtin\n", builtin[i]);
+            return 1;
+        }
+    }
+
+    char full_path[PATH_MAX];
+    memset(full_path, 0, PATH_MAX);
+    if (search_path(&command[cmd_l + 1], full_path) == 1) {
+        printf("%s is %s\n", &command[cmd_l + 1], full_path);
+        return 1;
+    }
+
+    printf("%s: not found\n", &command[cmd_l + 1]);
+    return 0;
+}
+
+int builtin_pwd(const char *command) {
+    char path[PATH_MAX];
+    getcwd(path, PATH_MAX);
+    printf("%s\n", path);
+    return 0;
+}
+
+// exit if return -1
+int repit(const char *command) {
+    int cmd_l = strcspn(command, " ");
+
+    // built-in shell
+    if (strncmp("exit", command, cmd_l) == 0) {
+        return -1;
+    }
+
+    if (strncmp("echo", command, cmd_l) == 0) {
+        return builtin_echo(command);
+    }
+
+    if (strncmp("type", command, cmd_l) == 0) {
+        return builtin_type(command);
+    }
+
+    if (strncmp("pwd", command, cmd_l) == 0) {
+        return builtin_pwd(command);
+    }
+
+    // run a program
+    return exec_command(command);
 }
 
 int main(int argc, char *argv[]) {
@@ -136,55 +204,9 @@ int main(int argc, char *argv[]) {
             // remove new line
             command[strcspn(command, "\n")] = '\0';
 
-            // built-in shell
-            if (strncmp(CMD_EXIT, command, strlen(CMD_EXIT)) == 0) {
+            if (repit(command) == -1) {
                 return 0;
             }
-
-            if (strncmp(CMD_ECHO, command, strlen(CMD_ECHO)) == 0) {
-                int i = strlen(CMD_ECHO);
-                while (command[i] == ' ' && i < strlen(command)) {
-                    i++;
-                }
-                printf("%s\n", &command[i]);
-                continue;
-            }
-
-            if (strncmp(CMD_TYPE, command, strlen(CMD_TYPE)) == 0) {
-                int i = strlen(CMD_TYPE);
-                while (command[i] == ' ' && i < strlen(command)) {
-                    i++;
-                }
-
-                // check if is builtin
-                int is_builtin = 0;
-                for (size_t j = 0; j < sizeof(CMDS) / sizeof(CMDS[0]); j++) {
-                    if (strncmp(CMDS[j], &command[i], strlen(CMDS[j])) == 0) {
-                        printf("%s is a shell builtin\n", &command[i]);
-                        is_builtin = 1;
-                        break;
-                    }
-                }
-
-                if (is_builtin == 1) {
-                    continue;
-                }
-
-                // check is is in PATH
-                char cmd_path[1024];
-                if (search_path(&command[i], cmd_path) == 1) {
-                    printf("%s is %s\n", &command[i], cmd_path);
-                    continue;
-                }
-
-                if (strlen(command) > 0) {
-                    printf("%s: not found\n", &command[i]);
-                    continue;
-                }
-            }
-
-            // run a program
-            exec_command(command);
         }
     }
 
