@@ -1,3 +1,2 @@
-type cat
-type asdfasdfasdf
-exit
+ cd /non-existing-directory
+ exit

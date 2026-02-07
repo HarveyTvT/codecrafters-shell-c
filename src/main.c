@@ -8,12 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static const char *builtin[] = {
-    "exit",
-    "echo",
-    "type",
-    "pwd",
-};
+static const char *builtin[] = {"exit", "echo", "type", "pwd", "cd"};
 
 int search_dir(const char *path, const char *command, char *full_path) {
     DIR *dir = opendir(path);
@@ -168,6 +163,18 @@ int builtin_pwd(const char *command) {
     return 0;
 }
 
+int builtin_cd(const char *command) {
+    int cmd_l = strcspn(command, " ");
+
+    struct stat s;
+    if (stat(&command[cmd_l + 1], &s) == -1) {
+        printf("cd: %s: No such file or directory\n", &command[cmd_l + 1]);
+        return 0;
+    }
+
+    return chdir(&command[cmd_l + 1]);
+};
+
 // exit if return -1
 int repit(const char *command) {
     int cmd_l = strcspn(command, " ");
@@ -187,6 +194,10 @@ int repit(const char *command) {
 
     if (strncmp("pwd", command, cmd_l) == 0) {
         return builtin_pwd(command);
+    }
+
+    if (strncmp("cd", command, cmd_l) == 0) {
+        return builtin_cd(command);
     }
 
     // run a program
