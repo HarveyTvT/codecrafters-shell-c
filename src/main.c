@@ -1,4 +1,5 @@
 #include <alloca.h>
+#include <assert.h>
 #include <dirent.h>
 #include <linux/limits.h>
 #include <stddef.h>
@@ -67,33 +68,102 @@ int count_token(const char *src) {
         return 0;
     }
 
-    int result = 0;
-    char *src_cpy = strdup(src);
-    char *save;
-    char *delim = " ";
-    char *token = strtok_r(src_cpy, delim, &save);
-    while (token) {
-        result++;
-        token = strtok_r(NULL, delim, &save);
+    int cnt = 0;
+
+    int i = 0;
+    while (i < strlen(src)) {
+        char ch = src[i];
+        switch (ch) {
+        case '\"':
+            while (++i < strlen(src)) {
+                if (src[i] == '\"') {
+                    break;
+                }
+            }
+            i++;
+            break;
+        case '\'':
+            while (++i < strlen(src)) {
+                if (src[i] == '\'') {
+                    break;
+                }
+            }
+            i++;
+            break;
+        case ' ':
+            if (i > 0) {
+                cnt++;
+            }
+            while (++i < strlen(src)) {
+                if (src[i] != ' ') {
+                    break;
+                }
+            }
+            break;
+        default:
+            i++;
+        }
+        if (i == strlen(src)) {
+            cnt++;
+        }
     }
 
-    free(src_cpy);
-
-    return result;
+    return cnt;
 }
 
 char **parse_command(const char *src, size_t *size) {
     *size = count_token(src);
+
     char **results = malloc(sizeof(char *) * (*size));
     size_t idx = 0;
 
-    char *src_cpy = strdup(src);
-    char *save;
-    char *delim = " ";
-    char *token = strtok_r(src_cpy, delim, &save);
-    while (token) {
-        results[idx++] = token;
-        token = strtok_r(NULL, delim, &save);
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int l = 0;
+
+    int i = 0;
+    while (i < strlen(src)) {
+        char ch = src[i];
+        switch (ch) {
+        case '\"':
+            while (++i < strlen(src)) {
+                if (src[i] != '\"') {
+                    buf[l++] = src[i];
+                } else {
+                    break;
+                }
+            }
+            i++;
+            break;
+        case '\'':
+            while (++i < strlen(src)) {
+                if (src[i] != '\'') {
+                    buf[l++] = src[i];
+                } else {
+                    break;
+                }
+            }
+            i++;
+            break;
+        case ' ':
+            if (i > 0) {
+                results[idx++] = strndup(buf, l);
+                l = 0;
+            }
+            while (++i < strlen(src)) {
+                if (src[i] != ' ') {
+                    break;
+                }
+            }
+            break;
+        default:
+            buf[l++] = src[i];
+            i++;
+        }
+        if (i == strlen(src)) {
+            results[idx++] = strndup(buf, l);
+            l = 0;
+        }
     }
 
     return results;
@@ -125,21 +195,25 @@ int exec_command(const char *command) {
     return 0;
 }
 
-int builtin_echo(const char *command) {
-    int cmd_l = strcspn(command, " ");
-    if (cmd_l + 1 < strlen(command)) {
-        printf("%s\n", &command[cmd_l + 1]);
-    } else {
-        printf("\n");
+int builtin_echo(char **args, size_t arg_l) {
+    for (size_t i = 1; i < arg_l; i++) {
+        if (i > 1) {
+            printf(" ");
+        }
+        printf("%s", args[i]);
     }
+    printf("\n");
+
     return 0;
 };
 
-int builtin_type(const char *command) {
-    int cmd_l = strcspn(command, " ");
+int builtin_type(char **args, const size_t arg_l) {
+    if (arg_l < 2) {
+        return 0;
+    }
 
     for (size_t i = 0; i < sizeof(builtin) / sizeof(char *); i++) {
-        if (strcmp(&command[cmd_l + 1], builtin[i]) == 0) {
+        if (strcmp(args[1], builtin[i]) == 0) {
             printf("%s is a shell builtin\n", builtin[i]);
             return 1;
         }
@@ -147,25 +221,28 @@ int builtin_type(const char *command) {
 
     char full_path[PATH_MAX];
     memset(full_path, 0, PATH_MAX);
-    if (search_path(&command[cmd_l + 1], full_path) == 1) {
-        printf("%s is %s\n", &command[cmd_l + 1], full_path);
+    if (search_path(args[1], full_path) == 1) {
+        printf("%s is %s\n", args[1], full_path);
         return 1;
     }
 
-    printf("%s: not found\n", &command[cmd_l + 1]);
+    printf("%s: not found\n", args[1]);
     return 0;
 }
 
-int builtin_pwd(const char *command) {
+int builtin_pwd() {
     char path[PATH_MAX];
     getcwd(path, PATH_MAX);
     printf("%s\n", path);
     return 0;
 }
 
-int builtin_cd(const char *command) {
-    int cmd_l = strcspn(command, " ");
-    const char *path = &command[cmd_l + 1];
+int builtin_cd(char **args, const size_t arg_l) {
+    if (arg_l < 2) {
+        return 0;
+    }
+
+    const char *path = args[1];
 
     if (strcmp(path, "~") == 0) {
         path = getenv("HOME");
@@ -173,7 +250,7 @@ int builtin_cd(const char *command) {
 
     struct stat s;
     if (stat(path, &s) == -1) {
-        printf("cd: %s: No such file or directory\n", &command[cmd_l + 1]);
+        printf("cd: %s: No such file or directory\n", args[1]);
         return 0;
     }
 
@@ -182,31 +259,37 @@ int builtin_cd(const char *command) {
 
 // exit if return -1
 int repit(const char *command) {
-    int cmd_l = strcspn(command, " ");
+    size_t arg_l = 0;
+    char **args = parse_command(command, &arg_l);
 
-    // built-in shell
-    if (strncmp("exit", command, cmd_l) == 0) {
+    if (arg_l == 0) {
         return -1;
     }
 
-    if (strncmp("echo", command, cmd_l) == 0) {
-        return builtin_echo(command);
+    int ret = 0;
+
+    // built-in shell
+    if (strcmp("exit", args[0]) == 0) {
+        ret = -1;
+    } else if (strcmp("echo", args[0]) == 0) {
+        ret = builtin_echo(args, arg_l);
+    } else if (strcmp("type", args[0]) == 0) {
+        ret = builtin_type(args, arg_l);
+    } else if (strcmp("pwd", args[0]) == 0) {
+        ret = builtin_pwd();
+    } else if (strcmp("cd", args[0]) == 0) {
+        ret = builtin_cd(args, arg_l);
+    } else {
+        ret = exec_command(command);
     }
 
-    if (strncmp("type", command, cmd_l) == 0) {
-        return builtin_type(command);
+    for (size_t i = 0; i < arg_l; i++) {
+        free(args[i]);
     }
 
-    if (strncmp("pwd", command, cmd_l) == 0) {
-        return builtin_pwd(command);
-    }
+    free(args);
 
-    if (strncmp("cd", command, cmd_l) == 0) {
-        return builtin_cd(command);
-    }
-
-    // run a program
-    return exec_command(command);
+    return ret;
 }
 
 int main(int argc, char *argv[]) {

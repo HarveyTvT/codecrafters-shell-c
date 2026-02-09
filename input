@@ -1,2 +1,2 @@
- cd /non-existing-directory
- exit
+echo hello    world
+exit
