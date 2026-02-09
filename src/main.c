@@ -90,6 +90,9 @@ int count_token(const char *src) {
             }
             i++;
             break;
+        case '\\':
+            i += 2;
+            break;
         case ' ':
             if (i > 0) {
                 cnt++;
@@ -144,6 +147,12 @@ char **parse_command(const char *src, size_t *size) {
                 }
             }
             i++;
+            break;
+        case '\\':
+            if (i + 1 < strlen(src)) {
+                buf[l++] = src[i + 1];
+            }
+            i += 2;
             break;
         case ' ':
             if (i > 0) {
