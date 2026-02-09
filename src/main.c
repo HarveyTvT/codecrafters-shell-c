@@ -76,7 +76,10 @@ int count_token(const char *src) {
         switch (ch) {
         case '\"':
             while (++i < strlen(src)) {
-                if (src[i] == '\"') {
+                if (src[i] == '\\') {
+                    i += 2;
+                }
+                if (i < strlen(src) && src[i] == '\"') {
                     break;
                 }
             }
@@ -130,7 +133,11 @@ char **parse_command(const char *src, size_t *size) {
         switch (ch) {
         case '\"':
             while (++i < strlen(src)) {
-                if (src[i] != '\"') {
+                if (src[i] == '\\') {
+                    buf[l++] = src[i + 1];
+                    i += 2;
+                }
+                if (i < strlen(src) && src[i] != '\"') {
                     buf[l++] = src[i];
                 } else {
                     break;
@@ -150,9 +157,14 @@ char **parse_command(const char *src, size_t *size) {
             break;
         case '\\':
             if (i + 1 < strlen(src)) {
-                buf[l++] = src[i + 1];
+                if (src[i + 1] == '\n') {
+                    buf[l++] = '\\';
+                    buf[l++] = 'n';
+                } else {
+                    buf[l++] = src[i + 1];
+                }
+                i += 2;
             }
-            i += 2;
             break;
         case ' ':
             if (i > 0) {
