@@ -1,2 +1,2 @@
-echo hello    world
+"exe with spaces" file.txt
 exit

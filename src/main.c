@@ -191,17 +191,12 @@ char **parse_command(const char *src, size_t *size) {
 }
 
 // exec_command
-int exec_command(const char *command) {
-    int cmd_l = strcspn(command, " ");
-    char cmd_name[cmd_l + 1];
-    memset(cmd_name, 0, cmd_l + 1);
-    strncpy(cmd_name, command, cmd_l);
-
+int exec_command(char **args, size_t art_l, const char *command) {
     char full_path[PATH_MAX];
     int found = 0;
     memset(full_path, 0, PATH_MAX);
-    if (search_path(cmd_name, full_path) == 0) {
-        printf("%s: command not found\n", cmd_name);
+    if (search_path(args[0], full_path) == 0) {
+        printf("%s: command not found\n", args[0]);
         return 0;
     }
 
@@ -301,7 +296,7 @@ int repit(const char *command) {
     } else if (strcmp("cd", args[0]) == 0) {
         ret = builtin_cd(args, arg_l);
     } else {
-        ret = exec_command(command);
+        ret = exec_command(args, arg_l, command);
     }
 
     for (size_t i = 0; i < arg_l; i++) {
