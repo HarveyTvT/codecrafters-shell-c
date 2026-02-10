@@ -1,6 +1,7 @@
 #include <alloca.h>
 #include <assert.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <linux/limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -275,11 +276,47 @@ int builtin_cd(char **args, const size_t arg_l) {
 
 // exit if return -1
 int repit(const char *command) {
-    size_t arg_l = 0;
-    char **args = parse_command(command, &arg_l);
+    size_t total_l = 0;
+    char **args = parse_command(command, &total_l);
+    size_t arg_l = total_l;
 
-    if (arg_l == 0) {
+    if (total_l == 0) {
         return -1;
+    }
+
+    // 重定向
+    int redirect = 0;
+    char *redirect_target;
+    for (size_t i = 0; i < total_l; i++) {
+        if ((strcmp(args[i], ">") == 0 || strcmp(args[i], "1>") == 0) &&
+            i + 1 < total_l) {
+            redirect = 1;
+            redirect_target = args[i + 1];
+            arg_l = i;
+            break;
+        }
+    }
+
+    int o_stdout;
+    int fd;
+    if (redirect == 1) {
+        if ((o_stdout = dup(STDOUT_FILENO)) == -1) {
+            perror("dup failed");
+            return -1;
+        }
+
+        fd = open(redirect_target, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd == -1) {
+            perror("open failed");
+            return -1;
+        }
+
+        if (dup2(fd, STDOUT_FILENO) == -1) {
+            perror("dup2 failed");
+            return -1;
+        }
+
+        close(fd);
     }
 
     int ret = 0;
@@ -299,11 +336,18 @@ int repit(const char *command) {
         ret = exec_command(args, arg_l, command);
     }
 
-    for (size_t i = 0; i < arg_l; i++) {
+    for (size_t i = 0; i < total_l; i++) {
         free(args[i]);
     }
 
     free(args);
+    if (redirect == 1) {
+        fflush(stdout);
+        if (dup2(o_stdout, STDOUT_FILENO) == -1) {
+            perror("dup2 restore failed");
+            return -1;
+        }
+    }
 
     return ret;
 }

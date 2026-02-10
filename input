@@ -1,2 +1,2 @@
-"exe with spaces" file.txt
+echo test > test.txt
 exit
