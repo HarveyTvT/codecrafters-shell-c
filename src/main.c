@@ -288,6 +288,7 @@ int repit(const char *command) {
     int   redirect_stdout = 0;
     int   redirect_stderr = 0;
     int   append_stdout   = 0;
+    int   append_stderr   = 0;
     char *redirect_target;
     for (size_t i = 0; i < total_l; i++) {
         if ((strcmp(args[i], ">") == 0 || strcmp(args[i], "1>") == 0) && i + 1 < total_l) {
@@ -310,18 +311,33 @@ int repit(const char *command) {
             arg_l           = i;
             break;
         }
+
+        if ((strcmp(args[i], "2>>") == 0) && i + 1 < total_l) {
+            append_stderr   = 1;
+            redirect_target = args[i + 1];
+            arg_l           = i;
+            break;
+        }
     }
 
     int o_stdout;
     int o_stderr;
     int fd;
-    if (redirect_stdout == 1) {
+    if (redirect_stdout == 1 || append_stdout == 1) {
         if ((o_stdout = dup(STDOUT_FILENO)) == -1) {
             perror("dup failed");
             return -1;
         }
 
-        fd = open(redirect_target, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        int flag = O_WRONLY | O_CREAT;
+        if (redirect_stdout == 1) {
+            flag |= O_TRUNC;
+        }
+        if (append_stdout == 1) {
+            flag |= O_APPEND;
+        }
+
+        fd = open(redirect_target, flag, 0644);
         if (fd == -1) {
             perror("open failed");
             return -1;
@@ -335,39 +351,27 @@ int repit(const char *command) {
         close(fd);
     }
 
-    if (redirect_stderr == 1) {
+    if (redirect_stderr == 1 || append_stderr == 1) {
         if ((o_stderr = dup(STDERR_FILENO)) == -1) {
             perror("dup failed");
             return -1;
         }
 
-        fd = open(redirect_target, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        int flag = O_WRONLY | O_CREAT;
+        if (redirect_stderr == 1) {
+            flag |= O_TRUNC;
+        }
+        if (append_stderr == 1) {
+            flag |= O_APPEND;
+        }
+
+        fd = open(redirect_target, flag, 0644);
         if (fd == -1) {
             perror("open failed");
             return -1;
         }
 
         if (dup2(fd, STDERR_FILENO) == -1) {
-            perror("dup2 failed");
-            return -1;
-        }
-
-        close(fd);
-    }
-
-    if (append_stdout == 1) {
-        if ((o_stderr = dup(STDOUT_FILENO)) == -1) {
-            perror("dup failed");
-            return -1;
-        }
-
-        fd = open(redirect_target, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (fd == -1) {
-            perror("open failed");
-            return -1;
-        }
-
-        if (dup2(fd, STDOUT_FILENO) == -1) {
             perror("dup2 failed");
             return -1;
         }
@@ -399,7 +403,7 @@ int repit(const char *command) {
     free(args);
 
     // restore stdout
-    if (redirect_stdout == 1) {
+    if (redirect_stdout == 1 || append_stdout == 1) {
         fflush(stdout);
         if (dup2(o_stdout, STDOUT_FILENO) == -1) {
             perror("dup2 restore failed");
@@ -407,17 +411,9 @@ int repit(const char *command) {
         }
     }
 
-    if (redirect_stderr == 1) {
+    if (redirect_stderr == 1 || append_stderr == 1) {
         fflush(stderr);
         if (dup2(o_stderr, STDERR_FILENO) == -1) {
-            perror("dup2 restore failed");
-            return -1;
-        }
-    }
-
-    if (append_stdout == 1) {
-        fflush(stdout);
-        if (dup2(o_stderr, STDOUT_FILENO) == -1) {
             perror("dup2 restore failed");
             return -1;
         }
