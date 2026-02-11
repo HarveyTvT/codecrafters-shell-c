@@ -12,15 +12,15 @@
 
 static const char *builtin[] = {"exit", "echo", "type", "pwd", "cd"};
 
-int search_dir(const char *path, const char *command, char *full_path) {
+int                search_dir(const char *path, const char *command, char *full_path) {
     DIR *dir = opendir(path);
     if (!dir) {
         return 0;
     }
 
     struct dirent *entry;
-    struct stat st;
-    int found = 0;
+    struct stat    st;
+    int            found = 0;
 
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, command) == 0) {
@@ -36,22 +36,21 @@ int search_dir(const char *path, const char *command, char *full_path) {
             }
         }
     }
-
     closedir(dir);
     return found;
 }
 
 int search_path(const char *command, char *full_path) {
-    char *path = getenv("PATH");
-    char *delim = ":";
+    char *path     = getenv("PATH");
+    char *delim    = ":";
 
     char *path_cpy = strdup(path);
 
-    int found = 0;
+    int   found    = 0;
 
     char *save;
     for (char *dir = strtok_r(path_cpy, delim, &save); dir;
-         dir = strtok_r(NULL, delim, &save)) {
+         dir       = strtok_r(NULL, delim, &save)) {
         if (search_dir(dir, command, full_path) == 1) {
             found = 1;
             break;
@@ -71,7 +70,7 @@ int count_token(const char *src) {
 
     int cnt = 0;
 
-    int i = 0;
+    int i   = 0;
     while (i < strlen(src)) {
         char ch = src[i];
         switch (ch) {
@@ -118,13 +117,14 @@ int count_token(const char *src) {
     return cnt;
 }
 
-char **parse_command(const char *src, size_t *size) {
-    *size = count_token(src);
+char **
+parse_command(const char *src, size_t *size) {
+    *size          = count_token(src);
 
     char **results = malloc(sizeof(char *) * (*size));
-    size_t idx = 0;
+    size_t idx     = 0;
 
-    char buf[1024];
+    char   buf[1024];
     memset(buf, 0, 1024);
     int l = 0;
 
@@ -170,7 +170,7 @@ char **parse_command(const char *src, size_t *size) {
         case ' ':
             if (i > 0) {
                 results[idx++] = strndup(buf, l);
-                l = 0;
+                l              = 0;
             }
             while (++i < strlen(src)) {
                 if (src[i] != ' ') {
@@ -184,7 +184,7 @@ char **parse_command(const char *src, size_t *size) {
         }
         if (i == strlen(src)) {
             results[idx++] = strndup(buf, l);
-            l = 0;
+            l              = 0;
         }
     }
 
@@ -194,7 +194,7 @@ char **parse_command(const char *src, size_t *size) {
 // exec_command
 int exec_command(char **args, size_t art_l, const char *command) {
     char full_path[PATH_MAX];
-    int found = 0;
+    int  found = 0;
     memset(full_path, 0, PATH_MAX);
     if (search_path(args[0], full_path) == 0) {
         printf("%s: command not found\n", args[0]);
@@ -202,7 +202,7 @@ int exec_command(char **args, size_t art_l, const char *command) {
     }
 
     FILE *fp = popen(command, "r");
-    char buffer[128];
+    char  buffer[128];
     memset(buffer, 0, 128);
     while (fgets(buffer, sizeof(buffer), fp) != NULL) {
         printf("%s", buffer);
@@ -277,29 +277,37 @@ int builtin_cd(char **args, const size_t arg_l) {
 // exit if return -1
 int repit(const char *command) {
     size_t total_l = 0;
-    char **args = parse_command(command, &total_l);
-    size_t arg_l = total_l;
+    char **args    = parse_command(command, &total_l);
+    size_t arg_l   = total_l;
 
     if (total_l == 0) {
         return -1;
     }
 
     // 重定向
-    int redirect = 0;
+    int   redirect_stdout = 0;
+    int   redirect_stderr = 0;
     char *redirect_target;
     for (size_t i = 0; i < total_l; i++) {
-        if ((strcmp(args[i], ">") == 0 || strcmp(args[i], "1>") == 0) &&
-            i + 1 < total_l) {
-            redirect = 1;
+        if ((strcmp(args[i], ">") == 0 || strcmp(args[i], "1>") == 0) && i + 1 < total_l) {
+            redirect_stdout = 1;
             redirect_target = args[i + 1];
-            arg_l = i;
+            arg_l           = i;
+            break;
+        }
+
+        if ((strcmp(args[i], "2>") == 0) && i + 1 < total_l) {
+            redirect_stderr = 1;
+            redirect_target = args[i + 1];
+            arg_l           = i;
             break;
         }
     }
 
     int o_stdout;
+    int o_stderr;
     int fd;
-    if (redirect == 1) {
+    if (redirect_stdout == 1) {
         if ((o_stdout = dup(STDOUT_FILENO)) == -1) {
             perror("dup failed");
             return -1;
@@ -312,6 +320,26 @@ int repit(const char *command) {
         }
 
         if (dup2(fd, STDOUT_FILENO) == -1) {
+            perror("dup2 failed");
+            return -1;
+        }
+
+        close(fd);
+    }
+
+    if (redirect_stderr == 1) {
+        if ((o_stderr = dup(STDERR_FILENO)) == -1) {
+            perror("dup failed");
+            return -1;
+        }
+
+        fd = open(redirect_target, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd == -1) {
+            perror("open failed");
+            return -1;
+        }
+
+        if (dup2(fd, STDERR_FILENO) == -1) {
             perror("dup2 failed");
             return -1;
         }
@@ -341,9 +369,19 @@ int repit(const char *command) {
     }
 
     free(args);
-    if (redirect == 1) {
+
+    // restore stdout
+    if (redirect_stdout == 1) {
         fflush(stdout);
         if (dup2(o_stdout, STDOUT_FILENO) == -1) {
+            perror("dup2 restore failed");
+            return -1;
+        }
+    }
+
+    if (redirect_stderr == 1) {
+        fflush(stderr);
+        if (dup2(o_stderr, STDERR_FILENO) == -1) {
             perror("dup2 restore failed");
             return -1;
         }

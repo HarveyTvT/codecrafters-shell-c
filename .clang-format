@@ -1,0 +1,9 @@
+Language: C
+BasedOnStyle: LLVM
+AlignConsecutiveDeclarations: AcrossEmptyLinesAndComments
+AlignConsecutiveAssignments: AcrossEmptyLinesAndComments
+AlignTrailingComments: true
+SpacesBeforeTrailingComments: 4
+ColumnLimit: 0
+IndentWidth: 4
+NamespaceIndentation: All
