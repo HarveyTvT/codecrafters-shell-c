@@ -287,6 +287,7 @@ int repit(const char *command) {
     // 重定向
     int   redirect_stdout = 0;
     int   redirect_stderr = 0;
+    int   append_stdout   = 0;
     char *redirect_target;
     for (size_t i = 0; i < total_l; i++) {
         if ((strcmp(args[i], ">") == 0 || strcmp(args[i], "1>") == 0) && i + 1 < total_l) {
@@ -298,6 +299,13 @@ int repit(const char *command) {
 
         if ((strcmp(args[i], "2>") == 0) && i + 1 < total_l) {
             redirect_stderr = 1;
+            redirect_target = args[i + 1];
+            arg_l           = i;
+            break;
+        }
+
+        if ((strcmp(args[i], ">>") == 0 || (strcmp(args[i], "1>>")) == 0) && i + 1 < total_l) {
+            append_stdout   = 1;
             redirect_target = args[i + 1];
             arg_l           = i;
             break;
@@ -347,6 +355,26 @@ int repit(const char *command) {
         close(fd);
     }
 
+    if (append_stdout == 1) {
+        if ((o_stderr = dup(STDOUT_FILENO)) == -1) {
+            perror("dup failed");
+            return -1;
+        }
+
+        fd = open(redirect_target, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd == -1) {
+            perror("open failed");
+            return -1;
+        }
+
+        if (dup2(fd, STDOUT_FILENO) == -1) {
+            perror("dup2 failed");
+            return -1;
+        }
+
+        close(fd);
+    }
+
     int ret = 0;
 
     // built-in shell
@@ -382,6 +410,14 @@ int repit(const char *command) {
     if (redirect_stderr == 1) {
         fflush(stderr);
         if (dup2(o_stderr, STDERR_FILENO) == -1) {
+            perror("dup2 restore failed");
+            return -1;
+        }
+    }
+
+    if (append_stdout == 1) {
+        fflush(stdout);
+        if (dup2(o_stderr, STDOUT_FILENO) == -1) {
             perror("dup2 restore failed");
             return -1;
         }
