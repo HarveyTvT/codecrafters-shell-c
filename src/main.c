@@ -14,7 +14,61 @@
 static const char *builtins[]  = {"exit", "echo", "type", "pwd", "cd"};
 static const char *completes[] = {"echo", "exit"};
 
-int                search_dir(const char *path, const char *command, char *full_path) {
+int                search_prefix_dir(const char *path, const char *command, char *result) {
+    DIR *dir = opendir(path);
+    if (!dir) {
+        return 0;
+    }
+
+    struct dirent *entry;
+    struct stat    st;
+    int            found     = 0;
+    char          *full_path = malloc(PATH_MAX);
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, command, strlen(command)) == 0) {
+            snprintf(full_path, PATH_MAX, "%s/%s", path, entry->d_name);
+
+            if (stat(full_path, &st) == -1) {
+                continue;
+            }
+
+            if (st.st_mode & S_IXUSR) {
+                strcpy(result, entry->d_name);
+                found = 1;
+                break;
+            }
+        }
+    }
+
+    free(full_path);
+    closedir(dir);
+    return found;
+}
+
+int search_prefix_path(const char *command, char *result) {
+    char *path     = getenv("PATH");
+    char *delim    = ":";
+
+    char *path_cpy = strdup(path);
+
+    int   found    = 0;
+
+    char *save;
+    for (char *dir = strtok_r(path_cpy, delim, &save); dir;
+         dir       = strtok_r(NULL, delim, &save)) {
+        if (search_prefix_dir(dir, command, result) == 1) {
+            found = 1;
+            break;
+        }
+    }
+
+    free(path_cpy);
+
+    return found;
+}
+
+int search_dir(const char *path, const char *command, char *full_path) {
     DIR *dir = opendir(path);
     if (!dir) {
         return 0;
@@ -423,19 +477,38 @@ int repit(const char *command) {
 }
 
 int complete(char *command, size_t *len) {
+    int         found = 0;
+    const char *option;
+
+    // builtin
     for (size_t i = 0; i < sizeof(completes) / sizeof(char *); i++) {
         if (strncmp(command, completes[i], *len) == 0) {
-            const char *option = completes[i];
-            while (*len < strlen(option)) {
-                command[(*len)] = option[*len];
-                putchar(command[*len]);
-                (*len)++;
-            }
-            command[(*len)] = ' ';
-            (*len)++;
-            putchar(' ');
-            return 0;
+            option = completes[i];
+            found  = 1;
+            break;
         }
+    }
+
+    // custom
+    if (found == 0) {
+        char result[PATH_MAX];
+        if ((found = search_path(command, result)) == 1) {
+            option = command;
+        } else if ((found = search_prefix_path(command, result)) == 1) {
+            option = result;
+        }
+    }
+
+    if (found) {
+        while (*len < strlen(option)) {
+            command[(*len)] = option[*len];
+            putchar(command[*len]);
+            (*len)++;
+        }
+        command[(*len)] = ' ';
+        (*len)++;
+        putchar(' ');
+        return 1;
     }
 
     putchar('\a');
