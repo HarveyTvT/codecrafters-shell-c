@@ -14,7 +14,60 @@
 static const char *builtins[]  = {"exit", "echo", "type", "pwd", "cd"};
 static const char *completes[] = {"echo", "exit"};
 
-int                search_prefix_dir(const char *path, const char *command, char *result) {
+int                search_and_print_prefix_dir(const char *path, const char *command, char **results, size_t *size) {
+    DIR *dir = opendir(path);
+    if (!dir) {
+        return 0;
+    }
+
+    struct dirent *entry;
+    struct stat    st;
+    int            found = 0;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, command, strlen(command)) == 0) {
+            int is_dup = 0;
+            for (size_t i = 0; i < (*size); i++) {
+                if (strcmp(entry->d_name, results[i]) == 0) {
+                    is_dup = 1;
+                    break;
+                }
+            }
+
+            if (is_dup == 0) {
+                found          = 1;
+                results[*size] = strdup(entry->d_name);
+                (*size)++;
+            }
+        }
+    }
+
+    closedir(dir);
+    return found;
+}
+
+int search_and_print_prefix_path(const char *command, char **results, size_t *size) {
+    char *path     = getenv("PATH");
+    char *delim    = ":";
+
+    char *path_cpy = strdup(path);
+
+    int   found    = 0;
+
+    char *save;
+    for (char *dir = strtok_r(path_cpy, delim, &save); dir;
+         dir       = strtok_r(NULL, delim, &save)) {
+        if (search_and_print_prefix_dir(dir, command, results, size) == 1) {
+            found = 1;
+        }
+    }
+
+    free(path_cpy);
+
+    return found;
+}
+
+int search_prefix_dir(const char *path, const char *command, char *result) {
     DIR *dir = opendir(path);
     if (!dir) {
         return 0;
@@ -476,43 +529,20 @@ int repit(const char *command) {
     return ret;
 }
 
-int complete(char *command, size_t *len) {
-    int         found = 0;
-    const char *option;
-
-    // builtin
-    for (size_t i = 0; i < sizeof(completes) / sizeof(char *); i++) {
-        if (strncmp(command, completes[i], *len) == 0) {
-            option = completes[i];
-            found  = 1;
-            break;
-        }
-    }
-
-    // custom
-    if (found == 0) {
-        char result[PATH_MAX];
-        if ((found = search_path(command, result)) == 1) {
-            option = command;
-        } else if ((found = search_prefix_path(command, result)) == 1) {
-            option = result;
-        }
-    }
-
-    if (found) {
-        while (*len < strlen(option)) {
-            command[(*len)] = option[*len];
-            putchar(command[*len]);
-            (*len)++;
-        }
-        command[(*len)] = ' ';
+int complete(char *command, const char *target, size_t *len) {
+    while (*len < strlen(target)) {
+        command[(*len)] = target[*len];
+        putchar(command[*len]);
         (*len)++;
-        putchar(' ');
-        return 1;
     }
+    command[(*len)] = ' ';
+    (*len)++;
+    putchar(' ');
+    return 1;
+}
 
-    putchar('\a');
-    return 0;
+int compare_str(const void *foo, const void *bar) {
+    return strcmp(*(const char **)foo, *(const char **)bar);
 }
 
 int main(int argc, char *argv[]) {
@@ -532,23 +562,72 @@ int main(int argc, char *argv[]) {
 
         size_t i         = 0;
         int    flag_exit = 0;
+        int    prev_bell = 0;
 
         char   ch;
 
         while ((ch = getchar()) != '\n') {
             if (ch == '\t') {
-                complete(command, &i);
-            } else if (ch == 127 || ch == 8) {
+                char *candicates[128];
+                memset(candicates, 0, 128);
+                size_t size = 0;
+
+                // builtin
+                for (size_t j = 0; j < sizeof(completes) / sizeof(char *); j++) {
+                    if (strncmp(command, completes[j], i) == 0) {
+                        candicates[size++] = strdup(completes[j]);
+                    }
+                }
+                // custom
+                search_and_print_prefix_path(command, candicates, &size);
+
+                if (size == 0) {
+                    // no match
+                    putchar('\x07');
+                } else if (size == 1) {
+                    // single match
+                    complete(command, candicates[0], &i);
+                } else {
+                    // multi match
+                    if (prev_bell == 1) {
+                        printf("\n");
+
+                        qsort(candicates, size, sizeof(char *), compare_str);
+                        for (size_t i = 0; i < size; i++) {
+                            printf("%s  ", candicates[i]);
+                        }
+
+                        printf("\n");
+                        printf("$ %s", command);
+                    } else {
+                        prev_bell = 1;
+                        putchar('\x07');
+                    }
+                }
+
+                for (size_t i = 0; i < size; i++) {
+                    free(candicates[i]);
+                }
+
+                // complete(command, &i);
+                continue;
+            } else {
+                prev_bell = 0;
+            }
+
+            if (ch == 127 || ch == 8) {
                 if (i > 0) {
                     printf("\b \b");
 
                     command[i - 1] = '\0';
                     i--;
                 }
-            } else {
-                command[i++] = ch;
-                putchar(ch);
+
+                continue;
             }
+
+            command[i++] = ch;
+            putchar(ch);
         }
         putchar('\n');
 
