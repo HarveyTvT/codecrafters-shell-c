@@ -8,9 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <termios.h>
 #include <unistd.h>
 
-static const char *builtin[] = {"exit", "echo", "type", "pwd", "cd"};
+static const char *builtins[]  = {"exit", "echo", "type", "pwd", "cd"};
+static const char *completes[] = {"echo", "exit"};
 
 int                search_dir(const char *path, const char *command, char *full_path) {
     DIR *dir = opendir(path);
@@ -229,9 +231,9 @@ int builtin_type(char **args, const size_t arg_l) {
         return 0;
     }
 
-    for (size_t i = 0; i < sizeof(builtin) / sizeof(char *); i++) {
-        if (strcmp(args[1], builtin[i]) == 0) {
-            printf("%s is a shell builtin\n", builtin[i]);
+    for (size_t i = 0; i < sizeof(builtins) / sizeof(char *); i++) {
+        if (strcmp(args[1], builtins[i]) == 0) {
+            printf("%s is a shell builtin\n", builtins[i]);
             return 1;
         }
     }
@@ -404,7 +406,6 @@ int repit(const char *command) {
 
     // restore stdout
     if (redirect_stdout == 1 || append_stdout == 1) {
-        fflush(stdout);
         if (dup2(o_stdout, STDOUT_FILENO) == -1) {
             perror("dup2 restore failed");
             return -1;
@@ -412,7 +413,6 @@ int repit(const char *command) {
     }
 
     if (redirect_stderr == 1 || append_stderr == 1) {
-        fflush(stderr);
         if (dup2(o_stderr, STDERR_FILENO) == -1) {
             perror("dup2 restore failed");
             return -1;
@@ -422,22 +422,66 @@ int repit(const char *command) {
     return ret;
 }
 
-int main(int argc, char *argv[]) {
-    // Flush after every printf
-    setbuf(stdout, NULL);
-    char command[256];
-
-    while (true) {
-        printf("$ ");
-        if (fgets(command, sizeof(command), stdin) != NULL) {
-            // remove new line
-            command[strcspn(command, "\n")] = '\0';
-
-            if (repit(command) == -1) {
-                return 0;
+int complete(char *command, size_t *len) {
+    for (size_t i = 0; i < sizeof(completes) / sizeof(char *); i++) {
+        if (strncmp(command, completes[i], *len) == 0) {
+            const char *option = completes[i];
+            while (*len < strlen(option)) {
+                command[(*len)] = option[*len];
+                putchar(command[*len]);
+                (*len)++;
             }
+            command[(*len)] = ' ';
+            (*len)++;
+            putchar(' ');
         }
     }
 
+    return 0;
+}
+
+int main(int argc, char *argv[]) {
+    // Flush after every printf
+    setbuf(stdout, NULL);
+    char           command[256];
+
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    while (true) {
+        memset(command, 0, 256);
+        printf("$ ");
+
+        size_t i         = 0;
+        int    flag_exit = 0;
+
+        char   ch;
+
+        while ((ch = getchar()) != '\n') {
+            if (ch == '\t') {
+                complete(command, &i);
+            } else if (ch == 127 || ch == 8) {
+                if (i > 0) {
+                    printf("\b \b");
+
+                    command[i - 1] = '\0';
+                    i--;
+                }
+            } else {
+                command[i++] = ch;
+                putchar(ch);
+            }
+        }
+        putchar('\n');
+
+        if (repit(command) == -1) {
+            break;
+        }
+    }
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
     return 0;
 }
