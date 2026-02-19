@@ -523,9 +523,11 @@ int autocomplete(char *command, size_t *i) {
         (*i)++;
         putchar(' ');
     } else if (size > 1) {
+        // multi match
         int   lcp_r  = lcp(candicates, size);
         char *target = candicates[0];
         if (lcp_r > *i) {
+            // partial completion
             while (*i < lcp_r) {
                 command[(*i)] = target[*i];
                 putchar(command[*i]);
@@ -535,7 +537,6 @@ int autocomplete(char *command, size_t *i) {
             putchar('\x07');
             char ch = getchar();
             if (ch == '\t') {
-                // multi match
                 printf("\n");
 
                 qsort(candicates, size, sizeof(char *), compare_str);
@@ -577,7 +578,6 @@ int main(int argc, char *argv[]) {
 
         size_t i         = 0;
         int    flag_exit = 0;
-        int    prev_bell = 0;
 
         char   ch;
 
@@ -585,10 +585,7 @@ int main(int argc, char *argv[]) {
             if (ch == '\t') {
                 autocomplete(command, &i);
                 continue;
-            } else {
-                prev_bell = 0;
             }
-
             if (ch == 127 || ch == 8) {
                 if (i > 0) {
                     printf("\b \b");
