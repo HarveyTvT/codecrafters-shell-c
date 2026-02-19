@@ -67,60 +67,6 @@ int search_and_print_prefix_path(const char *command, char **results, size_t *si
     return found;
 }
 
-int search_prefix_dir(const char *path, const char *command, char *result) {
-    DIR *dir = opendir(path);
-    if (!dir) {
-        return 0;
-    }
-
-    struct dirent *entry;
-    struct stat    st;
-    int            found     = 0;
-    char          *full_path = malloc(PATH_MAX);
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (strncmp(entry->d_name, command, strlen(command)) == 0) {
-            snprintf(full_path, PATH_MAX, "%s/%s", path, entry->d_name);
-
-            if (stat(full_path, &st) == -1) {
-                continue;
-            }
-
-            if (st.st_mode & S_IXUSR) {
-                strcpy(result, entry->d_name);
-                found = 1;
-                break;
-            }
-        }
-    }
-
-    free(full_path);
-    closedir(dir);
-    return found;
-}
-
-int search_prefix_path(const char *command, char *result) {
-    char *path     = getenv("PATH");
-    char *delim    = ":";
-
-    char *path_cpy = strdup(path);
-
-    int   found    = 0;
-
-    char *save;
-    for (char *dir = strtok_r(path_cpy, delim, &save); dir;
-         dir       = strtok_r(NULL, delim, &save)) {
-        if (search_prefix_dir(dir, command, result) == 1) {
-            found = 1;
-            break;
-        }
-    }
-
-    free(path_cpy);
-
-    return found;
-}
-
 int search_dir(const char *path, const char *command, char *full_path) {
     DIR *dir = opendir(path);
     if (!dir) {
@@ -529,20 +475,89 @@ int repit(const char *command) {
     return ret;
 }
 
-int complete(char *command, const char *target, size_t *len) {
-    while (*len < strlen(target)) {
-        command[(*len)] = target[*len];
-        putchar(command[*len]);
-        (*len)++;
-    }
-    command[(*len)] = ' ';
-    (*len)++;
-    putchar(' ');
-    return 1;
-}
-
 int compare_str(const void *foo, const void *bar) {
     return strcmp(*(const char **)foo, *(const char **)bar);
+}
+
+// longest comman prefix
+int lcp(char **results, size_t l) {
+    int r = 0;
+    while (1) {
+        for (int i = 0; i < l; i++) {
+            if (r >= strlen(results[i]) || results[i][r] != results[0][r]) {
+                return r;
+            }
+        }
+        r++;
+    }
+}
+
+int autocomplete(char *command, size_t *i) {
+    char *candicates[128];
+    memset(candicates, 0, 128);
+    size_t size = 0;
+
+    // builtin
+    for (size_t j = 0; j < sizeof(completes) / sizeof(char *); j++) {
+        if (strncmp(command, completes[j], *i) == 0) {
+            candicates[size++] = strdup(completes[j]);
+        }
+    }
+    // custom
+    search_and_print_prefix_path(command, candicates, &size);
+
+    if (size == 0) {
+        // no match
+        putchar('\x07');
+    } else if (size == 1) {
+        // single match
+        char *target = candicates[0];
+
+        while (*i < strlen(target)) {
+            command[(*i)] = target[*i];
+            putchar(command[*i]);
+            (*i)++;
+        }
+
+        command[(*i)] = ' ';
+        (*i)++;
+        putchar(' ');
+    } else if (size > 1) {
+        int   lcp_r  = lcp(candicates, size);
+        char *target = candicates[0];
+        if (lcp_r > *i) {
+            while (*i < lcp_r) {
+                command[(*i)] = target[*i];
+                putchar(command[*i]);
+                (*i)++;
+            }
+        } else {
+            putchar('\x07');
+            char ch = getchar();
+            if (ch == '\t') {
+                // multi match
+                printf("\n");
+
+                qsort(candicates, size, sizeof(char *), compare_str);
+                for (size_t i = 0; i < size; i++) {
+                    printf("%s  ", candicates[i]);
+                }
+
+                printf("\n");
+                printf("$ %s", command);
+            } else {
+                putchar(ch);
+                command[*i] = ch;
+                (*i)++;
+            }
+        }
+    }
+
+    for (size_t n = 0; n < size; n++) {
+        free(candicates[n]);
+    }
+
+    return size;
 }
 
 int main(int argc, char *argv[]) {
@@ -568,48 +583,7 @@ int main(int argc, char *argv[]) {
 
         while ((ch = getchar()) != '\n') {
             if (ch == '\t') {
-                char *candicates[128];
-                memset(candicates, 0, 128);
-                size_t size = 0;
-
-                // builtin
-                for (size_t j = 0; j < sizeof(completes) / sizeof(char *); j++) {
-                    if (strncmp(command, completes[j], i) == 0) {
-                        candicates[size++] = strdup(completes[j]);
-                    }
-                }
-                // custom
-                search_and_print_prefix_path(command, candicates, &size);
-
-                if (size == 0) {
-                    // no match
-                    putchar('\x07');
-                } else if (size == 1) {
-                    // single match
-                    complete(command, candicates[0], &i);
-                } else {
-                    // multi match
-                    if (prev_bell == 1) {
-                        printf("\n");
-
-                        qsort(candicates, size, sizeof(char *), compare_str);
-                        for (size_t i = 0; i < size; i++) {
-                            printf("%s  ", candicates[i]);
-                        }
-
-                        printf("\n");
-                        printf("$ %s", command);
-                    } else {
-                        prev_bell = 1;
-                        putchar('\x07');
-                    }
-                }
-
-                for (size_t i = 0; i < size; i++) {
-                    free(candicates[i]);
-                }
-
-                // complete(command, &i);
+                autocomplete(command, &i);
                 continue;
             } else {
                 prev_bell = 0;
