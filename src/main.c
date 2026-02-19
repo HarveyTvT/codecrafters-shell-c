@@ -434,9 +434,11 @@ int complete(char *command, size_t *len) {
             command[(*len)] = ' ';
             (*len)++;
             putchar(' ');
+            return 0;
         }
     }
 
+    putchar('\a');
     return 0;
 }
 
