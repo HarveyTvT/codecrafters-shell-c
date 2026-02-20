@@ -378,7 +378,11 @@ int builtin_history_r(char **args, const size_t arg_l) {
 
     if (strcmp("-r", args[1]) == 0) {
         FILE *f = fopen(args[2], "r");
-        char  buf[1024];
+        if (f == NULL) {
+            perror("fopen");
+            exit(0);
+        }
+        char buf[1024];
         while (fgets(buf, 1024, f) != NULL) {
             buf[strcspn(buf, "\n")] = '\0';
             if (strlen(buf) == 0) {
@@ -388,6 +392,19 @@ int builtin_history_r(char **args, const size_t arg_l) {
             history_cursor             = history_count;
             memset(buf, 0, 1024);
         }
+        fclose(f);
+    }
+
+    if (strcmp("-w", args[1]) == 0) {
+        FILE *f = fopen(args[2], "w+");
+        if (f == NULL) {
+            perror("fopen");
+            exit(0);
+        }
+        for (int i = 0; i < history_count; i++) {
+            fprintf(f, "%s\n", histories[i]);
+        }
+        fputs("\n", f);
         fclose(f);
     }
 

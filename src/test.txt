@@ -1,0 +1,5 @@
+history -r test
+echo hello
+echo world
+history -w test.txt
+
