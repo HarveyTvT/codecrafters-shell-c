@@ -386,6 +386,7 @@ int builtin_history_r(char *filename) {
         }
         histories[history_count++] = strdup(buf);
         history_cursor             = history_count;
+        history_append_cursor      = history_count;
         memset(buf, 0, 1024);
     }
     fclose(f);
