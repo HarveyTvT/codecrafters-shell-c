@@ -20,6 +20,7 @@ char              *histories[1024];
 int                history_count         = 0;
 int                history_cursor        = 0;
 int                history_append_cursor = 0;
+char               history_file[256];
 
 int                search_and_print_prefix_dir(const char *path, const char *command, char **results, size_t *size) {
     DIR *dir = opendir(path);
@@ -372,53 +373,67 @@ int builtin_cd(char **args, const size_t arg_l) {
     return chdir(path);
 };
 
-int builtin_history_r(char **args, const size_t arg_l) {
+int builtin_history_r(char *filename) {
+    FILE *f = fopen(filename, "r");
+    if (f == NULL) {
+        return 0;
+    }
+    char buf[1024];
+    while (fgets(buf, 1024, f) != NULL) {
+        buf[strcspn(buf, "\n")] = '\0';
+        if (strlen(buf) == 0) {
+            continue;
+        }
+        histories[history_count++] = strdup(buf);
+        history_cursor             = history_count;
+        memset(buf, 0, 1024);
+    }
+    fclose(f);
+    return 0;
+}
+
+int builtin_history_w(char *filename) {
+    FILE *f = fopen(filename, "w+");
+    if (f == NULL) {
+        perror("fopen");
+        exit(0);
+    }
+    for (int i = 0; i < history_count; i++) {
+        fprintf(f, "%s\n", histories[i]);
+    }
+    fclose(f);
+    return 0;
+}
+
+int builtin_history_a(char *filename) {
+    FILE *f = fopen(filename, "a+");
+    if (f == NULL) {
+        perror("fopen");
+        exit(0);
+    }
+    for (int i = history_append_cursor; i < history_count; i++) {
+        fprintf(f, "%s\n", histories[i]);
+    }
+    history_append_cursor = history_count;
+    fclose(f);
+    return 0;
+}
+
+int builtin_history_file(char **args, const size_t arg_l) {
     if (arg_l != 3) {
         return 0;
     }
 
     if (strcmp("-r", args[1]) == 0) {
-        FILE *f = fopen(args[2], "r");
-        if (f == NULL) {
-            perror("fopen");
-            exit(0);
-        }
-        char buf[1024];
-        while (fgets(buf, 1024, f) != NULL) {
-            buf[strcspn(buf, "\n")] = '\0';
-            if (strlen(buf) == 0) {
-                continue;
-            }
-            histories[history_count++] = strdup(buf);
-            history_cursor             = history_count;
-            memset(buf, 0, 1024);
-        }
-        fclose(f);
+        return builtin_history_r(args[2]);
     }
 
     if (strcmp("-w", args[1]) == 0) {
-        FILE *f = fopen(args[2], "w+");
-        if (f == NULL) {
-            perror("fopen");
-            exit(0);
-        }
-        for (int i = 0; i < history_count; i++) {
-            fprintf(f, "%s\n", histories[i]);
-        }
-        fclose(f);
+        return builtin_history_w(args[2]);
     }
 
     if (strcmp("-a", args[1]) == 0) {
-        FILE *f = fopen(args[2], "a+");
-        if (f == NULL) {
-            perror("fopen");
-            exit(0);
-        }
-        for (int i = history_append_cursor; i < history_count; i++) {
-            fprintf(f, "%s\n", histories[i]);
-        }
-        history_append_cursor = history_count;
-        fclose(f);
+        return builtin_history_a(args[2]);
     }
 
     return 0;
@@ -428,7 +443,7 @@ int builtin_history(char **args, const size_t arg_l) {
     int n = history_count;
 
     if (arg_l == 3) {
-        return builtin_history_r(args, arg_l);
+        return builtin_history_file(args, arg_l);
     } else if (arg_l == 2) {
         char *endptr;
         n = strtol(args[1], &endptr, 10);
@@ -751,8 +766,16 @@ int main(int argc, char *argv[]) {
     newt = oldt;
     newt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-
+    // history
     memset(histories, 0, 1024);
+
+    char *hisenv = getenv("HISTFILE");
+
+    if (hisenv != NULL) {
+        strcat(history_file, hisenv);
+        builtin_history_r(history_file);
+    }
+
     while (true) {
         memset(command, 0, 256);
         printf("$ ");
@@ -824,6 +847,11 @@ int main(int argc, char *argv[]) {
         if (repit(command) == -1) {
             break;
         }
+    }
+
+    // history
+    if (strlen(history_file) > 0) {
+        builtin_history_a(history_file);
     }
 
     for (int i = 0; i < history_count; i++) {

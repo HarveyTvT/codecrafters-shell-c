@@ -9,8 +9,12 @@
       "args": ["<", "input"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
-      "environment": [],
-
+      "environment": [
+        {
+          "name": "HISTFILE",
+          "value": "test.txt"
+        }
+      ],
       "MIMode": "gdb",
       "setupCommands": [
         {
