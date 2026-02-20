@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -247,7 +248,7 @@ parse_command(const char *src, size_t *size) {
 }
 
 // exec_command
-int exec_command(char **args, size_t art_l, const char *command) {
+int exec_command(char **args, size_t arg_l, const char *command) {
     char full_path[PATH_MAX];
     int  found = 0;
     memset(full_path, 0, PATH_MAX);
@@ -265,6 +266,42 @@ int exec_command(char **args, size_t art_l, const char *command) {
     pclose(fp);
 
     return 0;
+}
+
+char **split_pipe(char **args, size_t arg_l, size_t *sub_command_size) {
+    int total = 0;
+    for (int i = 0; i < arg_l; i++) {
+        if (strcmp(args[i], "|") == 0) {
+            total++;
+        }
+    }
+    total += 1;
+    *sub_command_size = total;
+
+    char **results    = malloc(total * sizeof(char *));
+    memset(results, 0, total);
+
+    char buf[PATH_MAX];
+    memset(buf, 0, PATH_MAX);
+
+    int sub_command_idx = 0;
+    for (int i = 0; i < arg_l; i++) {
+        if (strcmp(args[i], "|") == 0) {
+            results[sub_command_idx++] = strdup(buf);
+            memset(buf, 0, PATH_MAX);
+        } else {
+            if (strlen(buf) > 0) {
+                strcat(buf, " ");
+            }
+            strcat(buf, args[i]);
+        }
+    }
+
+    if (strlen(buf) > 0) {
+        results[sub_command_idx++] = strdup(buf);
+    }
+
+    return results;
 }
 
 int builtin_echo(char **args, size_t arg_l) {
@@ -329,6 +366,8 @@ int builtin_cd(char **args, const size_t arg_l) {
     return chdir(path);
 };
 
+int repit_pipes(char **args, const size_t arg_l);
+
 // exit if return -1
 int repit(const char *command) {
     size_t total_l = 0;
@@ -337,6 +376,13 @@ int repit(const char *command) {
 
     if (total_l == 0) {
         return -1;
+    }
+
+    // 管道走特殊逻辑
+    for (size_t i = 0; i < total_l; i++) {
+        if (strcmp(args[i], "|") == 0) {
+            return repit_pipes(args, arg_l);
+        }
     }
 
     // 重定向
@@ -559,6 +605,58 @@ int autocomplete(char *command, size_t *i) {
     }
 
     return size;
+}
+
+int repit_pipes(char **args, const size_t arg_l) {
+    size_t n            = 0;
+    char **sub_commands = split_pipe(args, arg_l, &n);
+
+    int    pipes[n - 1][2];
+    for (int i = 0; i < n - 1; i++) {
+        if (pipe(pipes[i]) == -1) {
+            perror("pipe");
+            exit(-1);
+        }
+    }
+
+    for (int i = 0; i < n; i++) {
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            exit(1);
+        }
+
+        if (pid == 0) {
+            if (i > 0) {
+                dup2(pipes[i - 1][0], STDIN_FILENO);
+            }
+
+            if (i < n - 1) {
+                dup2(pipes[i][1], STDOUT_FILENO);
+            }
+
+            for (int j = 0; j < n - 1; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+
+            repit(sub_commands[i]);
+            exit(0);
+        }
+    }
+
+    for (int i = 0; i < n - 1; i++) {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+
+    for (int i = 0; i < n; i++) {
+        wait(NULL);
+    }
+
+    free(sub_commands);
+
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
