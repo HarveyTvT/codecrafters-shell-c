@@ -17,8 +17,9 @@
 static const char *builtins[]  = {"exit", "echo", "type", "pwd", "cd", "history"};
 static const char *completes[] = {"echo", "exit", "history"};
 char              *histories[1024];
-int                history_count  = 0;
-int                history_cursor = 0;
+int                history_count         = 0;
+int                history_cursor        = 0;
+int                history_append_cursor = 0;
 
 int                search_and_print_prefix_dir(const char *path, const char *command, char **results, size_t *size) {
     DIR *dir = opendir(path);
@@ -407,15 +408,16 @@ int builtin_history_r(char **args, const size_t arg_l) {
         fclose(f);
     }
 
-    if (strcmp("-w", args[1]) == 0) {
-        FILE *f = fopen(args[2], "w+");
+    if (strcmp("-a", args[1]) == 0) {
+        FILE *f = fopen(args[2], "a+");
         if (f == NULL) {
             perror("fopen");
             exit(0);
         }
-        for (int i = 0; i < history_count; i++) {
+        for (int i = history_append_cursor; i < history_count; i++) {
             fprintf(f, "%s\n", histories[i]);
         }
+        history_append_cursor = history_count;
         fclose(f);
     }
 
