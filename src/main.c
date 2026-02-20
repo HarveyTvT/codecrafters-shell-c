@@ -371,11 +371,36 @@ int builtin_cd(char **args, const size_t arg_l) {
     return chdir(path);
 };
 
-int builtin_history(char **args, const size_t arg_l) {
-    int   n = history_count;
-    char *endptr;
+int builtin_history_r(char **args, const size_t arg_l) {
+    if (arg_l != 3) {
+        return 0;
+    }
 
-    if (arg_l == 2) {
+    if (strcmp("-r", args[1]) == 0) {
+        FILE *f = fopen(args[2], "r");
+        char  buf[1024];
+        while (fgets(buf, 1024, f) != NULL) {
+            buf[strcspn(buf, "\n")] = '\0';
+            if (strlen(buf) == 0) {
+                continue;
+            }
+            histories[history_count++] = strdup(buf);
+            history_cursor             = history_count;
+            memset(buf, 0, 1024);
+        }
+        fclose(f);
+    }
+
+    return 0;
+}
+
+int builtin_history(char **args, const size_t arg_l) {
+    int n = history_count;
+
+    if (arg_l == 3) {
+        return builtin_history_r(args, arg_l);
+    } else if (arg_l == 2) {
+        char *endptr;
         n = strtol(args[1], &endptr, 10);
     }
 
