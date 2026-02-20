@@ -404,7 +404,6 @@ int builtin_history_r(char **args, const size_t arg_l) {
         for (int i = 0; i < history_count; i++) {
             fprintf(f, "%s\n", histories[i]);
         }
-        fputs("\n", f);
         fclose(f);
     }
 
