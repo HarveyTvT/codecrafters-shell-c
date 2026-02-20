@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <linux/limits.h>
+#include <ncurses.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +17,8 @@
 static const char *builtins[]  = {"exit", "echo", "type", "pwd", "cd", "history"};
 static const char *completes[] = {"echo", "exit", "history"};
 char              *histories[1024];
-int                history_count = 0;
+int                history_count  = 0;
+int                history_cursor = 0;
 
 int                search_and_print_prefix_dir(const char *path, const char *command, char **results, size_t *size) {
     DIR *dir = opendir(path);
@@ -382,7 +384,7 @@ int builtin_history(char **args, const size_t arg_l) {
     }
 
     for (int i = history_count - n; i < history_count; i++) {
-        printf("%s", histories[i]);
+        printf("    %d %s\n", i + 1, histories[i]);
     }
 
     return 0;
@@ -563,25 +565,25 @@ int lcp(char **results, size_t l) {
 }
 
 int autocomplete(char *command, size_t *i) {
-    char *candicates[128];
-    memset(candicates, 0, 128);
+    char *candidates[128];
+    memset(candidates, 0, 128);
     size_t size = 0;
 
     // builtin
     for (size_t j = 0; j < sizeof(completes) / sizeof(char *); j++) {
         if (strncmp(command, completes[j], *i) == 0) {
-            candicates[size++] = strdup(completes[j]);
+            candidates[size++] = strdup(completes[j]);
         }
     }
     // custom
-    search_and_print_prefix_path(command, candicates, &size);
+    search_and_print_prefix_path(command, candidates, &size);
 
     if (size == 0) {
         // no match
         putchar('\x07');
     } else if (size == 1) {
         // single match
-        char *target = candicates[0];
+        char *target = candidates[0];
 
         while (*i < strlen(target)) {
             command[(*i)] = target[*i];
@@ -594,8 +596,8 @@ int autocomplete(char *command, size_t *i) {
         putchar(' ');
     } else if (size > 1) {
         // multi match
-        int   lcp_r  = lcp(candicates, size);
-        char *target = candicates[0];
+        int   lcp_r  = lcp(candidates, size);
+        char *target = candidates[0];
         if (lcp_r > *i) {
             // partial completion
             while (*i < lcp_r) {
@@ -609,9 +611,9 @@ int autocomplete(char *command, size_t *i) {
             if (ch == '\t') {
                 printf("\n");
 
-                qsort(candicates, size, sizeof(char *), compare_str);
+                qsort(candidates, size, sizeof(char *), compare_str);
                 for (size_t i = 0; i < size; i++) {
-                    printf("%s  ", candicates[i]);
+                    printf("%s  ", candidates[i]);
                 }
 
                 printf("\n");
@@ -625,7 +627,7 @@ int autocomplete(char *command, size_t *i) {
     }
 
     for (size_t n = 0; n < size; n++) {
-        free(candicates[n]);
+        free(candidates[n]);
     }
 
     return size;
@@ -695,7 +697,6 @@ int main(int argc, char *argv[]) {
     newt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-    char history_buf[1024];
     memset(histories, 0, 1024);
     while (true) {
         memset(command, 0, 256);
@@ -721,6 +722,34 @@ int main(int argc, char *argv[]) {
 
                 continue;
             }
+            if (ch == 0x1b) {    // ESC
+                char seq[2];
+                seq[0] = getchar();
+                seq[1] = getchar();
+
+                if (seq[0] == '[' && seq[1] == 'A') {
+                    history_cursor--;
+                    if (history_cursor < 0) {
+                        history_cursor = 0;
+                    }
+                    printf("\033[1G");
+                    printf("\033[2K");
+                    printf("$ %s", histories[history_cursor]);
+                    i = strlen(histories[history_cursor]);
+                    continue;
+                }
+                if (seq[0] == '[' && seq[1] == 'B') {
+                    history_cursor++;
+                    if (history_cursor >= history_count) {
+                        history_cursor = history_count - 1;
+                    }
+                    printf("\033[1G");
+                    printf("\033[2K");
+                    printf("$ %s", histories[history_cursor]);
+                    i = strlen(histories[history_cursor]);
+                    continue;
+                }
+            }
 
             command[i++] = ch;
             putchar(ch);
@@ -728,9 +757,8 @@ int main(int argc, char *argv[]) {
         putchar('\n');
 
         // record history
-        snprintf(history_buf, 1024, "    %d %s\n", history_count + 1, command);
-        histories[history_count++] = strdup(history_buf);
-        memset(history_buf, 0, 1024);
+        histories[history_count++] = strdup(command);
+        history_cursor             = history_count;
 
         if (repit(command) == -1) {
             break;
