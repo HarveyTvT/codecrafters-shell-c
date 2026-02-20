@@ -407,6 +407,18 @@ int builtin_history_r(char **args, const size_t arg_l) {
         fclose(f);
     }
 
+    if (strcmp("-w", args[1]) == 0) {
+        FILE *f = fopen(args[2], "w+");
+        if (f == NULL) {
+            perror("fopen");
+            exit(0);
+        }
+        for (int i = 0; i < history_count; i++) {
+            fprintf(f, "%s\n", histories[i]);
+        }
+        fclose(f);
+    }
+
     return 0;
 }
 
