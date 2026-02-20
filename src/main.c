@@ -735,6 +735,9 @@ int main(int argc, char *argv[]) {
                     printf("\033[1G");
                     printf("\033[2K");
                     printf("$ %s", histories[history_cursor]);
+
+                    memset(command, 0, 256);
+                    strcat(command, histories[history_cursor]);
                     i = strlen(histories[history_cursor]);
                     continue;
                 }
@@ -746,6 +749,9 @@ int main(int argc, char *argv[]) {
                     printf("\033[1G");
                     printf("\033[2K");
                     printf("$ %s", histories[history_cursor]);
+
+                    memset(command, 0, 256);
+                    strcat(command, histories[history_cursor]);
                     i = strlen(histories[history_cursor]);
                     continue;
                 }
