@@ -370,7 +370,18 @@ int builtin_cd(char **args, const size_t arg_l) {
 };
 
 int builtin_history(char **args, const size_t arg_l) {
-    for (int i = 0; i < history_count; i++) {
+    int   n = history_count;
+    char *endptr;
+
+    if (arg_l == 2) {
+        n = strtol(args[1], &endptr, 10);
+    }
+
+    if (n > history_count) {
+        n = history_count;
+    }
+
+    for (int i = history_count - n; i < history_count; i++) {
         printf("%s", histories[i]);
     }
 
