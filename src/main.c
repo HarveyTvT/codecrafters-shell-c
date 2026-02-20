@@ -8,12 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/ucontext.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
 
-static const char *builtins[]  = {"exit", "echo", "type", "pwd", "cd"};
-static const char *completes[] = {"echo", "exit"};
+static const char *builtins[]  = {"exit", "echo", "type", "pwd", "cd", "history"};
+static const char *completes[] = {"echo", "exit", "history"};
+char              *histories[1024];
+int                history_count = 0;
 
 int                search_and_print_prefix_dir(const char *path, const char *command, char **results, size_t *size) {
     DIR *dir = opendir(path);
@@ -366,6 +369,14 @@ int builtin_cd(char **args, const size_t arg_l) {
     return chdir(path);
 };
 
+int builtin_history(char **args, const size_t arg_l) {
+    for (int i = 0; i < history_count; i++) {
+        printf("%s", histories[i]);
+    }
+
+    return 0;
+}
+
 int repit_pipes(char **args, const size_t arg_l);
 
 // exit if return -1
@@ -493,6 +504,8 @@ int repit(const char *command) {
         ret = builtin_pwd();
     } else if (strcmp("cd", args[0]) == 0) {
         ret = builtin_cd(args, arg_l);
+    } else if (strcmp("history", args[0]) == 0) {
+        ret = builtin_history(args, arg_l);
     } else {
         ret = exec_command(args, arg_l, command);
     }
@@ -652,6 +665,7 @@ int repit_pipes(char **args, const size_t arg_l) {
 
     for (int i = 0; i < n; i++) {
         wait(NULL);
+        free(sub_commands[i]);
     }
 
     free(sub_commands);
@@ -670,6 +684,8 @@ int main(int argc, char *argv[]) {
     newt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
+    char history_buf[1024];
+    memset(histories, 0, 1024);
     while (true) {
         memset(command, 0, 256);
         printf("$ ");
@@ -700,9 +716,18 @@ int main(int argc, char *argv[]) {
         }
         putchar('\n');
 
+        // record history
+        snprintf(history_buf, 1024, "    %d %s\n", history_count + 1, command);
+        histories[history_count++] = strdup(history_buf);
+        memset(history_buf, 0, 1024);
+
         if (repit(command) == -1) {
             break;
         }
+    }
+
+    for (int i = 0; i < history_count; i++) {
+        free(histories[i]);
     }
 
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
